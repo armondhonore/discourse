@@ -7,11 +7,23 @@ class BrowserPageviewEvent < ActiveRecord::Base
   MAX_USER_AGENT_LENGTH = 1000
   MAX_NORMALIZED_REFERRER_LENGTH = 2000
   RETENTION_PERIOD = 3.months
+  SOURCE_PIGGYBACK = 1
+  SOURCE_BEACON = 2
+
+  enum :source, { piggyback: SOURCE_PIGGYBACK, beacon: SOURCE_BEACON }, scopes: false
 
   has_one :browser_pageview_event_score, foreign_key: :event_id, dependent: :delete
 
   def self.retention_cutoff
     RETENTION_PERIOD.ago.beginning_of_day
+  end
+
+  def self.rollup_source
+    if UpcomingChanges.enabled?(:dashboard_improvements)
+      SOURCE_BEACON
+    else
+      SOURCE_PIGGYBACK
+    end
   end
 
   before_save :truncate_fields
@@ -41,6 +53,7 @@ end
 #  normalized_referrer_version :integer
 #  referrer                    :string(2000)
 #  score                       :integer
+#  source                      :integer          default("piggyback"), not null
 #  url                         :string(2000)     not null
 #  user_agent                  :string(1000)     not null
 #  created_at                  :datetime         not null
