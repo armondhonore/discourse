@@ -277,4 +277,79 @@ describe "Admin Dashboard Redesign | Site Traffic section" do
       )
     end
   end
+
+  context "with bounce rate and average session duration metrics" do
+    before { SiteSetting.persist_browser_pageview_events = true }
+
+    it "shows staff the bounce rate and average session duration for the period",
+       time: Time.zone.local(2026, 5, 14, 12, 0, 0) do
+      BrowserPageviewSessionEngagementDailyRollup.create!(
+        date: Date.new(2026, 5, 12),
+        logged_in: false,
+        sessions: 8,
+        bounced: 3,
+        engaged_seconds_total: 480,
+      )
+      BrowserPageviewSessionEngagementDailyRollup.create!(
+        date: Date.new(2026, 5, 12),
+        logged_in: true,
+        sessions: 12,
+        bounced: 2,
+        engaged_seconds_total: 720,
+      )
+
+      dashboard.visit
+      traffic = dashboard.site_traffic
+
+      expect(traffic).to have_bounce_rate("25%")
+      expect(traffic).to have_average_session_duration("1m 0s")
+    end
+
+    it "shows staff a placeholder and tooltip when no visits fall in the period",
+       time: Time.zone.local(2026, 5, 14, 12, 0, 0) do
+      dashboard.visit
+      traffic = dashboard.site_traffic
+
+      expect(traffic).to have_bounce_rate("—")
+      expect(traffic).to have_average_session_duration("—")
+
+      traffic.hover_bounce_rate_tooltip
+      expect(traffic).to have_session_metric_tooltip(
+        "Shown once visits are recorded for this period.",
+      )
+    end
+
+    it "does not show the metric tiles when persist_browser_pageview_events is off",
+       time: Time.zone.local(2026, 5, 14, 12, 0, 0) do
+      SiteSetting.persist_browser_pageview_events = false
+      BrowserPageviewSessionEngagementDailyRollup.create!(
+        date: Date.new(2026, 5, 12),
+        logged_in: false,
+        sessions: 8,
+        bounced: 3,
+        engaged_seconds_total: 480,
+      )
+
+      dashboard.visit
+      traffic = dashboard.site_traffic
+
+      expect(traffic).to have_no_bounce_rate
+      expect(traffic).to have_no_average_session_duration
+    end
+
+    it "records engaged time from a real visit and surfaces it on the dashboard" do
+      SiteSetting.use_beacon_for_browser_page_views = true
+
+      visit("/")
+      sleep(3)
+      page.execute_script("window.dispatchEvent(new Event('pagehide'))")
+
+      wait_for(timeout: 5) { BrowserPageviewSessionEngagement.exists? }
+      Jobs::MaintainBrowserPageviewEngagementRollups.new.execute({})
+
+      dashboard.visit
+
+      expect(dashboard.site_traffic).to have_recorded_average_session_duration
+    end
+  end
 end

@@ -1882,4 +1882,97 @@ RSpec.describe Middleware::RequestTracker do
       expect(fake_logger.warnings).to be_empty
     end
   end
+
+  describe "engagement tracking via /srv/engagement" do
+    before { SiteSetting.persist_browser_pageview_events = true }
+
+    def engagement_env(body_hash, extra = {})
+      env(
+        {
+          :path => "/srv/engagement",
+          "HTTP_HOST" => "test.localhost",
+          "REQUEST_METHOD" => "POST",
+          "CONTENT_TYPE" => "application/json",
+          "rack.input" => StringIO.new(JSON.generate(body_hash)),
+        }.merge(extra),
+      )
+    end
+
+    let(:same_origin) { { "HTTP_ORIGIN" => "http://test.localhost" } }
+    let(:session_id) { SecureRandom.alphanumeric(32) }
+
+    it "returns 204, records the engagement, and does not call the app" do
+      app_called = false
+      middleware =
+        Middleware::RequestTracker.new(
+          lambda do |_env|
+            app_called = true
+            [200, {}, ["OK"]]
+          end,
+        )
+
+      status, = middleware.call(engagement_env({ session_id:, engaged_seconds: 42 }, same_origin))
+
+      expect(status).to eq(204)
+      expect(app_called).to eq(false)
+      row = BrowserPageviewSessionEngagement.find_by(session_id:)
+      expect(row.engaged_seconds).to eq(42)
+    end
+
+    it "keeps the larger engaged value when a lower report arrives later" do
+      middleware = Middleware::RequestTracker.new(lambda { |_env| [200, {}, ["OK"]] })
+
+      middleware.call(engagement_env({ session_id:, engaged_seconds: 50 }, same_origin))
+      middleware.call(engagement_env({ session_id:, engaged_seconds: 30 }, same_origin))
+
+      row = BrowserPageviewSessionEngagement.find_by(session_id:)
+      expect(row.engaged_seconds).to eq(50)
+    end
+
+    it "clamps engaged seconds to the configured cap" do
+      SiteSetting.browser_pageview_max_engaged_seconds = 100
+      middleware = Middleware::RequestTracker.new(lambda { |_env| [200, {}, ["OK"]] })
+
+      middleware.call(engagement_env({ session_id:, engaged_seconds: 101 }, same_origin))
+
+      expect(BrowserPageviewSessionEngagement.find_by(session_id:).engaged_seconds).to eq(100)
+    end
+
+    it "stores zero for zero, negative, and non-numeric values" do
+      negative_session = SecureRandom.alphanumeric(32)
+      non_numeric_session = SecureRandom.alphanumeric(32)
+      middleware = Middleware::RequestTracker.new(lambda { |_env| [200, {}, ["OK"]] })
+
+      middleware.call(engagement_env({ session_id:, engaged_seconds: 0 }, same_origin))
+      middleware.call(
+        engagement_env({ session_id: negative_session, engaged_seconds: -5 }, same_origin),
+      )
+      middleware.call(
+        engagement_env({ session_id: non_numeric_session, engaged_seconds: "abc" }, same_origin),
+      )
+
+      expect(BrowserPageviewSessionEngagement.find_by(session_id:).engaged_seconds).to eq(0)
+      expect(
+        BrowserPageviewSessionEngagement.find_by(session_id: negative_session).engaged_seconds,
+      ).to eq(0)
+      expect(
+        BrowserPageviewSessionEngagement.find_by(session_id: non_numeric_session).engaged_seconds,
+      ).to eq(0)
+    end
+
+    it "returns 403 for cross-origin requests and records nothing" do
+      middleware = Middleware::RequestTracker.new(lambda { |_env| [200, {}, ["OK"]] })
+
+      status, =
+        middleware.call(
+          engagement_env(
+            { session_id:, engaged_seconds: 42 },
+            { "HTTP_ORIGIN" => "https://evil.example" },
+          ),
+        )
+
+      expect(status).to eq(403)
+      expect(BrowserPageviewSessionEngagement.find_by(session_id:)).to eq(nil)
+    end
+  end
 end

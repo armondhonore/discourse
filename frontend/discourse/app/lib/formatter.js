@@ -210,6 +210,19 @@ export function durationTiny(distance, ageOpts) {
   return duration(distance, { format: "tiny", ...ageOpts });
 }
 
+export function formatMinutesSeconds(seconds) {
+  const totalSeconds = Math.floor(seconds);
+
+  if (totalSeconds < 60) {
+    return i18n("dates.tiny.x_seconds", { count: totalSeconds });
+  }
+
+  const minutes = Math.floor(totalSeconds / 60);
+  const remainderSeconds = totalSeconds % 60;
+
+  return `${i18n("dates.tiny.x_minutes", { count: minutes })} ${i18n("dates.tiny.x_seconds", { count: remainderSeconds })}`;
+}
+
 function relativeAgeTiny(date, ageOpts) {
   const format = "tiny";
   let distance = Math.round((new Date() - date) / 1000);

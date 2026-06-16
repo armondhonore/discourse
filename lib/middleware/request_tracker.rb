@@ -360,6 +360,17 @@ class Middleware::RequestTracker
       return result
     end
 
+    if self.class.is_engagement_tracking_request?(request)
+      if self.class.same_origin_beacon_request?(request)
+        self.class.record_engagement(env) if SiteSetting.persist_browser_pageview_events
+        result = [204, {}, []]
+      else
+        env["discourse.request_tracker.skip"] = true
+        result = [403, {}, []]
+      end
+      return result
+    end
+
     if self.class.is_pageview_tracking_request?(request)
       result = [204, {}, []]
       return result
@@ -659,6 +670,32 @@ class Middleware::RequestTracker
   def self.is_beacon_tracking_request?(request)
     SiteSetting.use_beacon_for_browser_page_views && request.post? &&
       request.path == Discourse.beacon_pv_tracking_path
+  end
+
+  def self.is_engagement_tracking_request?(request)
+    request.post? && request.path == Discourse.beacon_engagement_tracking_path
+  end
+
+  def self.record_engagement(env)
+    body = env["rack.input"]&.read
+    env["rack.input"]&.rewind
+    data =
+      begin
+        JSON.parse(body)
+      rescue JSON::ParserError
+        {}
+      end
+    return if !data.is_a?(Hash)
+
+    session_id = data["session_id"].to_s.slice(0, MAX_SESSION_ID_LENGTH)
+    return if session_id.blank?
+
+    BrowserPageviewSessionEngagement.record(
+      session_id: session_id,
+      engaged_seconds: data["engaged_seconds"],
+    )
+  rescue ActiveRecord::StatementInvalid => e
+    raise unless e.cause.is_a?(PG::ReadOnlySqlTransaction)
   end
 
   def self.same_origin_beacon_request?(request)

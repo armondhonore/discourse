@@ -686,5 +686,70 @@ RSpec.describe AdminDashboardSiteTraffic do
         expect(second[:top_countries][:rows].first[:country_code]).to eq("US")
       end
     end
+
+    context "for bounce rate and average session duration" do
+      before { SiteSetting.persist_browser_pageview_events = true }
+
+      def seed_rollup(logged_in:, sessions:, bounced:, engaged_seconds_total:)
+        BrowserPageviewSessionEngagementDailyRollup.create!(
+          date: Date.new(2026, 5, 10),
+          logged_in:,
+          sessions:,
+          bounced:,
+          engaged_seconds_total:,
+        )
+      end
+
+      it "returns bounce rate and average session duration summed across the audience" do
+        seed_rollup(logged_in: false, sessions: 8, bounced: 3, engaged_seconds_total: 240)
+        seed_rollup(logged_in: true, sessions: 12, bounced: 2, engaged_seconds_total: 360)
+
+        expect(build_traffic(start_date: "2026-05-01", end_date: "2026-05-14")[:kpis]).to eq(
+          browser_pageviews: {
+            value: 0,
+          },
+          logged_in_share: {
+            value: 0,
+          },
+          bounce_rate: {
+            value: 25,
+          },
+          average_session_duration: {
+            value: 30,
+          },
+        )
+      end
+
+      it "returns nil values when no sessions fall in the period" do
+        expect(build_traffic(start_date: "2026-05-01", end_date: "2026-05-14")[:kpis]).to eq(
+          browser_pageviews: {
+            value: 0,
+          },
+          logged_in_share: {
+            value: 0,
+          },
+          bounce_rate: {
+            value: nil,
+          },
+          average_session_duration: {
+            value: nil,
+          },
+        )
+      end
+
+      it "omits the KPIs entirely when persist_browser_pageview_events is off" do
+        SiteSetting.persist_browser_pageview_events = false
+        seed_rollup(logged_in: false, sessions: 8, bounced: 3, engaged_seconds_total: 240)
+
+        expect(build_traffic(start_date: "2026-05-01", end_date: "2026-05-14")[:kpis]).to eq(
+          browser_pageviews: {
+            value: 0,
+          },
+          logged_in_share: {
+            value: 0,
+          },
+        )
+      end
+    end
   end
 end

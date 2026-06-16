@@ -604,6 +604,7 @@ basic:
   persist_browser_pageview_events:
     default: true
     hidden: true
+    client: true
   clean_up_browser_pageview_events:
     default: false
     hidden: true
@@ -613,6 +614,13 @@ basic:
     min: 1
     max: 20000
     hidden: true
+  browser_pageview_max_engaged_seconds:
+    default: 1800
+    type: integer
+    min: 1
+    max: 86400
+    hidden: true
+    client: true
   experimental_detect_crawler_pageviews:
     default: false
     hidden: true
