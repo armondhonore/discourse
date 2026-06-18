@@ -220,7 +220,10 @@ export function formatMinutesSeconds(seconds) {
   const minutes = Math.floor(totalSeconds / 60);
   const remainderSeconds = totalSeconds % 60;
 
-  return `${i18n("dates.tiny.x_minutes", { count: minutes })} ${i18n("dates.tiny.x_seconds", { count: remainderSeconds })}`;
+  return i18n("dates.tiny.x_minutes_seconds", {
+    minutes,
+    seconds: remainderSeconds,
+  });
 }
 
 function relativeAgeTiny(date, ageOpts) {

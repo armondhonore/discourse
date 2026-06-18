@@ -124,6 +124,7 @@ en:
         x_minutes:
           one: "%{count}m"
           other: "%{count}m"
+        x_minutes_seconds: "%{minutes}m %{seconds}s"
         about_x_hours:
           one: "%{count}h"
           other: "%{count}h"
