@@ -283,14 +283,16 @@ describe "Admin Dashboard Redesign | Site Traffic section" do
 
     it "shows staff the bounce rate and average session duration for the period",
        time: Time.zone.local(2026, 5, 14, 12, 0, 0) do
-      BrowserPageviewSessionEngagementDailyRollup.create!(
+      Fabricate(
+        :browser_pageview_session_engagement_daily_rollup,
         date: Date.new(2026, 5, 12),
         logged_in: false,
         sessions: 8,
         bounced: 3,
         engaged_seconds_total: 480,
       )
-      BrowserPageviewSessionEngagementDailyRollup.create!(
+      Fabricate(
+        :browser_pageview_session_engagement_daily_rollup,
         date: Date.new(2026, 5, 12),
         logged_in: true,
         sessions: 12,
@@ -322,7 +324,8 @@ describe "Admin Dashboard Redesign | Site Traffic section" do
     it "does not show the metric tiles when persist_browser_pageview_events is off",
        time: Time.zone.local(2026, 5, 14, 12, 0, 0) do
       SiteSetting.persist_browser_pageview_events = false
-      BrowserPageviewSessionEngagementDailyRollup.create!(
+      Fabricate(
+        :browser_pageview_session_engagement_daily_rollup,
         date: Date.new(2026, 5, 12),
         logged_in: false,
         sessions: 8,

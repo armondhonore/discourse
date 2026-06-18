@@ -78,13 +78,7 @@ RSpec.describe Jobs::MaintainBrowserPageviewEngagementRollups do
 
     it "re-aggregates days a multi-day failure skipped, not only the previous day" do
       Fabricate(:browser_pageview_session_engagement, created_at: Time.utc(2026, 6, 10, 8))
-      BrowserPageviewSessionEngagementDailyRollup.create!(
-        date: Date.new(2026, 6, 10),
-        logged_in: false,
-        sessions: 1,
-        bounced: 0,
-        engaged_seconds_total: 30,
-      )
+      Fabricate(:browser_pageview_session_engagement_daily_rollup, date: Date.new(2026, 6, 10))
       Fabricate(
         :browser_pageview_event,
         session_id: SecureRandom.alphanumeric(32),
