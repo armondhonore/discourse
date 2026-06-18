@@ -25,8 +25,9 @@ module Jobs
       return nil, nil if floor.nil?
 
       end_date = Time.zone.today
-      start_date =
-        BrowserPageviewSessionEngagementDailyRollup.none? ? floor : [floor, 1.day.ago.to_date].max
+      last_rolled_up =
+        BrowserPageviewSessionEngagementDailyRollup.where("date < ?", end_date).maximum(:date)
+      start_date = [floor, last_rolled_up].compact.max
 
       [start_date, end_date]
     end

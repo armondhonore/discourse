@@ -75,5 +75,50 @@ RSpec.describe Jobs::MaintainBrowserPageviewEngagementRollups do
 
       expect(BrowserPageviewSessionEngagementDailyRollup.sum(:sessions)).to eq(2)
     end
+
+    it "re-aggregates days a multi-day failure skipped, not only the previous day" do
+      Fabricate(:browser_pageview_session_engagement, created_at: Time.utc(2026, 6, 10, 8))
+      BrowserPageviewSessionEngagementDailyRollup.create!(
+        date: Date.new(2026, 6, 10),
+        logged_in: false,
+        sessions: 1,
+        bounced: 0,
+        engaged_seconds_total: 30,
+      )
+      Fabricate(
+        :browser_pageview_event,
+        session_id: SecureRandom.alphanumeric(32),
+        created_at: Time.utc(2026, 6, 15, 9),
+      )
+
+      described_class.new.execute({})
+
+      expect(
+        BrowserPageviewSessionEngagementDailyRollup.where(date: Date.new(2026, 6, 15)).sum(
+          :sessions,
+        ),
+      ).to eq(1)
+    end
+
+    it "does not reach back for a late event on a day behind the last rolled-up day" do
+      Fabricate(:browser_pageview_session_engagement, created_at: Time.utc(2026, 6, 18, 8))
+      Fabricate(
+        :browser_pageview_event,
+        session_id: SecureRandom.alphanumeric(32),
+        created_at: Time.utc(2026, 6, 19, 9),
+      )
+      described_class.new.execute({})
+
+      Fabricate(
+        :browser_pageview_event,
+        session_id: SecureRandom.alphanumeric(32),
+        created_at: Time.utc(2026, 6, 18, 9),
+      )
+      described_class.new.execute({})
+
+      expect(BrowserPageviewSessionEngagementDailyRollup.pluck(:date)).to eq(
+        [Date.new(2026, 6, 19)],
+      )
+    end
   end
 end
