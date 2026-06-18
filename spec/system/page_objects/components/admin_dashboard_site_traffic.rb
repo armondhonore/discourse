@@ -140,13 +140,6 @@ module PageObjects
         has_no_kpi?("average_session_duration")
       end
 
-      def has_recorded_average_session_duration?
-        has_css?(
-          "[data-test-kpi='average_session_duration'] .db-section__metric-number",
-          text: /[1-9]/,
-        )
-      end
-
       def hover_bounce_rate_tooltip
         find("[data-test-kpi='bounce_rate'] [data-trigger]").hover
         self

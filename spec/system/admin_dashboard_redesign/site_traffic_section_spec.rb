@@ -339,20 +339,5 @@ describe "Admin Dashboard Redesign | Site Traffic section" do
       expect(traffic).to have_no_bounce_rate
       expect(traffic).to have_no_average_session_duration
     end
-
-    it "records engaged time from a real visit and surfaces it on the dashboard" do
-      SiteSetting.use_beacon_for_browser_page_views = true
-
-      visit("/")
-      sleep(3)
-      page.execute_script("window.dispatchEvent(new Event('pagehide'))")
-
-      wait_for(timeout: 5) { BrowserPageviewSessionEngagement.exists? }
-      Jobs::MaintainBrowserPageviewEngagementRollups.new.execute({})
-
-      dashboard.visit
-
-      expect(dashboard.site_traffic).to have_recorded_average_session_duration
-    end
   end
 end

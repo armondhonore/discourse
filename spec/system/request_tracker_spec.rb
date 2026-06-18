@@ -961,4 +961,18 @@ describe "Request tracking" do
       include_examples "logs piggyback and beacon entries on home and topic"
     end
   end
+
+  describe "engagement" do
+    before { SiteSetting.persist_browser_pageview_events = true }
+
+    it "records engaged time from a real visit" do
+      visit("/")
+      session_id = pageview_tracking.session_id
+      page.execute_script("window.dispatchEvent(new Event('pagehide'))")
+
+      try_until_success { expect(BrowserPageviewSessionEngagement.exists?).to eq(true) }
+
+      expect(BrowserPageviewSessionEngagement.sole.session_id).to eq(session_id)
+    end
+  end
 end
