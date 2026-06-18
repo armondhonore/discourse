@@ -1974,5 +1974,15 @@ RSpec.describe Middleware::RequestTracker do
       expect(status).to eq(403)
       expect(BrowserPageviewSessionEngagement.find_by(session_id:)).to eq(nil)
     end
+
+    it "no-ops without raising when the database is in read-only mode" do
+      BrowserPageviewSessionEngagement.stubs(:record).raises(PG::ReadOnlySqlTransaction)
+      middleware = Middleware::RequestTracker.new(lambda { |_env| [200, {}, ["OK"]] })
+
+      status, = middleware.call(engagement_env({ session_id:, engaged_seconds: 42 }, same_origin))
+
+      expect(status).to eq(204)
+      expect(BrowserPageviewSessionEngagement.find_by(session_id:)).to eq(nil)
+    end
   end
 end

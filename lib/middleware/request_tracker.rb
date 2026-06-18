@@ -690,12 +690,14 @@ class Middleware::RequestTracker
     session_id = data["session_id"].to_s.slice(0, MAX_SESSION_ID_LENGTH)
     return if session_id.blank?
 
-    BrowserPageviewSessionEngagement.record(
-      session_id: session_id,
-      engaged_seconds: data["engaged_seconds"],
-    )
-  rescue ActiveRecord::StatementInvalid => e
-    raise unless e.cause.is_a?(PG::ReadOnlySqlTransaction)
+    Scheduler::Defer.later("Record BrowserPageviewSessionEngagement") do
+      BrowserPageviewSessionEngagement.record(
+        session_id: session_id,
+        engaged_seconds: data["engaged_seconds"],
+      )
+    rescue PG::ReadOnlySqlTransaction
+      # Skip recording engagement when PostgreSQL is in read-only transaction mode.
+    end
   end
 
   def self.same_origin_beacon_request?(request)
