@@ -5,6 +5,8 @@ module DiscourseWorkflows
     MAX_ITERATIONS = 1000
     MAX_WAIT_DURATION_SECONDS = 30.days.to_i
     MAX_NODE_OUTPUT_BYTES = 50.megabytes
+    WORKFLOW_CALL_TRIGGER_OUTPUT_KEY = "workflow_call"
+    WORKFLOW_CALL_TRIGGER_METADATA_KEY = "workflow_call"
 
     class WaitRequested < StandardError
       attr_reader :waiting_until
@@ -16,6 +18,12 @@ module DiscourseWorkflows
     end
 
     delegate :execution, to: :@store
+
+    attr_reader :last_output_items
+
+    def output_items_for_node_id(node_id)
+      @output_items_by_node_id[node_id.to_s]
+    end
 
     def initialize(workflow, trigger_node_id, trigger_data, options = ExecutionOptions.new)
       @workflow = workflow
@@ -45,6 +53,7 @@ module DiscourseWorkflows
           user: @options.user,
           workflow_nodes: workflow_nodes,
           workflow_name: workflow_version&.name,
+          workflow_call_caller: @options.workflow_call_caller,
         )
       @store =
         ExecutionStore.new(
@@ -64,6 +73,9 @@ module DiscourseWorkflows
       @waiting_node = nil
       @waiting_step = nil
       @pin_data_by_node_name = resolved_pin_data
+      @workflow_call_stack = normalized_workflow_call_stack
+      @last_output_items = nil
+      @output_items_by_node_id = {}
     end
 
     def self.resume(execution, response_items, user: nil, webhook_context: nil)
@@ -121,8 +133,12 @@ module DiscourseWorkflows
               end
             )
         ItemContract.validate_items!(trigger_items, source: "trigger:#{trigger_node.type}")
-        record_step(trigger_node, [], output: trigger_items, status: Step::SUCCESS)
+        trigger_step_output = trigger_step_output_items(trigger_node, trigger_items)
+        trigger_step =
+          record_step(trigger_node, [], output: trigger_step_output, status: Step::SUCCESS)
+        attach_workflow_call_trigger_metadata(trigger_step, trigger_node)
         @context.store_node_output(trigger_node, trigger_items)
+        record_node_output(trigger_node, trigger_items)
         @context.store_node_run(trigger_node, inputs: [], outputs: [trigger_items])
         enqueue_downstream(trigger_node, 0, trigger_items)
       end
@@ -136,6 +152,7 @@ module DiscourseWorkflows
 
         update_waiting_step(waiting_node, response_items)
         @context.store_node_output(waiting_node, response_items)
+        record_node_output(waiting_node, response_items)
         @context.store_node_run(
           waiting_node,
           inputs: [],
@@ -150,6 +167,39 @@ module DiscourseWorkflows
     end
 
     private
+
+    def normalized_workflow_call_stack
+      stack = Array(@options.workflow_call_stack).map(&:to_s)
+      workflow_id = @workflow.id.to_s
+      stack.last == workflow_id ? stack : stack + [workflow_id]
+    end
+
+    def trigger_step_output_items(trigger_node, trigger_items)
+      caller = workflow_call_caller_metadata(trigger_node)
+      return trigger_items if caller.blank?
+
+      trigger_items.map do |item|
+        item.merge(
+          "json" =>
+            item
+              .fetch("json") { {} }
+              .merge(WORKFLOW_CALL_TRIGGER_OUTPUT_KEY => { "called_by" => caller }),
+        )
+      end
+    end
+
+    def attach_workflow_call_trigger_metadata(step, trigger_node)
+      caller = workflow_call_caller_metadata(trigger_node)
+      return if caller.blank?
+
+      step.add_metadata(WORKFLOW_CALL_TRIGGER_METADATA_KEY, { "called_by" => caller })
+    end
+
+    def workflow_call_caller_metadata(trigger_node)
+      return unless trigger_node.type == Nodes::WorkflowCallTrigger::V1.identifier
+
+      @options.workflow_call_caller
+    end
 
     def execute_flow(setup_method, *setup_args, &block)
       send(setup_method, *setup_args)
@@ -291,6 +341,7 @@ module DiscourseWorkflows
         end
 
         @context.store_node_output(node, all_items)
+        record_node_output(node, all_items)
         @context.store_node_run(
           node,
           inputs: input_groups_for_storage(input_groups),
@@ -310,6 +361,7 @@ module DiscourseWorkflows
           step.succeed!(output: all_items)
           step.apply_updates!("error" => nil)
           @context.store_node_output(node, all_items)
+          record_node_output(node, all_items)
           @context.store_node_run(
             node,
             inputs: input_groups_for_storage(input_groups),
@@ -375,6 +427,7 @@ module DiscourseWorkflows
       step = record_step(node, input_items)
       step.skip!(output: input_items, reason: reason)
       @context.store_node_output(node, input_items)
+      record_node_output(node, input_items)
       @context.store_node_run(node, inputs: [input_items], outputs: [input_items])
       enqueue_downstream(node, 0, input_items)
     end
@@ -384,6 +437,7 @@ module DiscourseWorkflows
       step = record_step(node, input_items)
       step.skip!(output: input_items, reason: reason)
       @context.store_node_output(node, input_items)
+      record_node_output(node, input_items)
       @context.store_node_run(node, inputs: [input_items], outputs: [input_items])
       enqueue_downstream(node, 0, input_items)
     end
@@ -393,6 +447,7 @@ module DiscourseWorkflows
       step.succeed!(output: pinned_items)
       step.add_metadata("pinned", true)
       @context.store_node_output(node, pinned_items)
+      record_node_output(node, pinned_items)
       @context.store_node_run(
         node,
         inputs: input_groups_for_storage(input_groups),
@@ -471,6 +526,7 @@ module DiscourseWorkflows
         workflow_dependencies: preloaded_workflow_dependencies,
         workflow_snapshot: @snapshot,
         webhook_context: @options.webhook_context,
+        workflow_call_stack: @workflow_call_stack,
         runtime_state: runtime_state,
         static_data_state: @context.static_data_state,
       )
@@ -786,6 +842,11 @@ module DiscourseWorkflows
       step.add_metadata("operation", operation_value)
     end
 
+    def record_node_output(node, items)
+      @last_output_items = items
+      @output_items_by_node_id[node.id.to_s] = items
+    end
+
     def record_step(node, input_items, output: [], status: Step::RUNNING, error: nil)
       step =
         Step.build(
@@ -988,6 +1049,10 @@ module DiscourseWorkflows
       end
       if parameters["data_table_id"].present?
         dependencies << ["data_table_id", parameters["data_table_id"]]
+      end
+      if node.type == DiscourseWorkflows::Nodes::WorkflowCall::V1.identifier &&
+           parameters["workflow_id"].present?
+        dependencies << ["workflow_call", parameters["workflow_id"]]
       end
       dependencies
     end

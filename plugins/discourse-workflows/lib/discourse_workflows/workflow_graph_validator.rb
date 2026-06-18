@@ -5,6 +5,8 @@ module DiscourseWorkflows
     MAX_NODES = 50
     UNSUPPORTED_NODE_KEYS = %i[type_version webhook_id position_index settings].freeze
     STICKY_NOTE_TYPE = "flow:sticky_note"
+    WORKFLOW_CALL_ACTION_TYPE = "action:workflow_call"
+    WORKFLOW_CALL_TRIGGER_TYPE = "trigger:workflow_call"
 
     attr_reader :workflow
 
@@ -39,6 +41,7 @@ module DiscourseWorkflows
       return false if workflow.errors.any?
 
       validate_connections
+      validate_workflow_call_dependencies
       workflow.errors.empty?
     end
 
@@ -207,6 +210,116 @@ module DiscourseWorkflows
           I18n.t("discourse_workflows.errors.node_does_not_accept_inputs", node: target["name"]),
         )
       end
+    end
+
+    def validate_workflow_call_dependencies
+      calls = workflow_call_nodes
+      return if calls.empty?
+
+      target_ids = calls.filter_map { |node| workflow_call_target_id(node) }
+      targets_by_id =
+        DiscourseWorkflows::Workflow.includes(:active_version).where(id: target_ids).index_by(&:id)
+
+      calls.each do |node|
+        validate_workflow_call_target(node, targets_by_id[workflow_call_target_id(node)])
+      end
+
+      validate_workflow_call_cycles(calls) if workflow.errors.empty?
+    end
+
+    def validate_workflow_call_target(node, target_workflow)
+      target_id = workflow_call_target_id(node)
+      if target_id.blank?
+        workflow.errors.add(
+          :base,
+          I18n.t("discourse_workflows.errors.workflow_call.workflow_required"),
+        )
+        return
+      end
+
+      if workflow.id.present? && target_id == workflow.id
+        workflow.errors.add(
+          :base,
+          I18n.t("discourse_workflows.errors.workflow_call.self_reference", node: node["name"]),
+        )
+        return
+      end
+
+      if target_workflow.nil?
+        workflow.errors.add(
+          :base,
+          I18n.t("discourse_workflows.errors.workflow_call.target_not_found"),
+        )
+        return
+      end
+
+      return if callable_workflow?(target_workflow)
+
+      workflow.errors.add(
+        :base,
+        I18n.t("discourse_workflows.errors.workflow_call.target_not_callable"),
+      )
+    end
+
+    def validate_workflow_call_cycles(calls)
+      return if workflow.id.blank?
+
+      edges = active_workflow_call_edges
+      edges[workflow.id] = calls.filter_map { |node| workflow_call_target_id(node) }.to_set
+
+      calls.each do |node|
+        target_id = workflow_call_target_id(node)
+        next if target_id.blank?
+
+        next unless workflow_call_reaches?(target_id, workflow.id, edges, Set.new)
+
+        workflow.errors.add(
+          :base,
+          I18n.t("discourse_workflows.errors.workflow_call.cycle", node: node["name"]),
+        )
+      end
+    end
+
+    def workflow_call_nodes
+      nodes.select { |node| node["type"] == WORKFLOW_CALL_ACTION_TYPE }
+    end
+
+    def workflow_call_target_id(node)
+      value = DiscourseWorkflows::NodeData.parameters(node)["workflow_id"]
+      return if value.blank?
+
+      Integer(value, exception: false)
+    end
+
+    def callable_workflow?(target_workflow)
+      target_workflow.published? &&
+        target_workflow.active_version&.nodes&.any? do |node|
+          node["type"] == WORKFLOW_CALL_TRIGGER_TYPE
+        end
+    end
+
+    def active_workflow_call_edges
+      DiscourseWorkflows::WorkflowDependency
+        .of_type("workflow_call")
+        .joins(:workflow)
+        .where(
+          "discourse_workflows_workflow_dependencies.workflow_version_id = " \
+            "discourse_workflows_workflows.active_version_id",
+        )
+        .pluck(:workflow_id, :dependency_key)
+        .each_with_object(
+          Hash.new { |hash, key| hash[key] = Set.new },
+        ) do |(source_id, target_key), edges|
+          target_id = Integer(target_key, exception: false)
+          edges[source_id] << target_id if target_id
+        end
+    end
+
+    def workflow_call_reaches?(start_id, target_id, edges, visited)
+      return true if start_id == target_id
+      return false unless visited.add?(start_id)
+
+      edges[start_id].any? { |next_id| workflow_call_reaches?(next_id, target_id, edges, visited) }
     end
 
     def connection_records

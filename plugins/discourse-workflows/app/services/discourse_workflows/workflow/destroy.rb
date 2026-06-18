@@ -11,6 +11,8 @@ module DiscourseWorkflows
 
     policy :can_manage_workflows, class_name: Policy::CanManageWorkflows
     model :workflow
+    model :referencing_workflows, optional: true
+    policy :workflow_not_called_by_other_workflows
 
     transaction { step :delete_workflow }
 
@@ -21,6 +23,24 @@ module DiscourseWorkflows
 
     def fetch_workflow(params:)
       DiscourseWorkflows::Workflow.find_by(id: params.workflow_id)
+    end
+
+    def fetch_referencing_workflows(workflow:)
+      workflow_ids =
+        DiscourseWorkflows::WorkflowDependency
+          .workflows_referencing("workflow_call", workflow.id)
+          .where.not(workflow_id: workflow.id)
+          .pluck(:workflow_id)
+
+      DiscourseWorkflows::Workflow
+        .where(id: workflow_ids)
+        .order(:name)
+        .pluck(:id, :name)
+        .map { |id, name| { id:, name: } }
+    end
+
+    def workflow_not_called_by_other_workflows(referencing_workflows:)
+      referencing_workflows.blank?
     end
 
     def delete_workflow(workflow:)

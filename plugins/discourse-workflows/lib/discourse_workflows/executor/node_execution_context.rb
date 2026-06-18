@@ -78,7 +78,7 @@ module DiscourseWorkflows
         end
       end
 
-      attr_reader :user, :vars, :execution_id, :node_id, :webhook_ctx
+      attr_reader :user, :vars, :execution_id, :node_id, :webhook_ctx, :workflow_call_stack
 
       def initialize(
         input_items:,
@@ -105,6 +105,7 @@ module DiscourseWorkflows
         workflow_dependencies: nil,
         workflow_snapshot: nil,
         webhook_context: nil,
+        workflow_call_stack: [],
         runtime_state: RuntimeState.new,
         static_data_state: nil
       )
@@ -139,6 +140,7 @@ module DiscourseWorkflows
         @workflow_dependencies = workflow_dependencies
         @workflow_snapshot = workflow_snapshot
         @webhook_ctx = webhook_context
+        @workflow_call_stack = Array(workflow_call_stack).map(&:to_s)
         @static_data_state = static_data_state
       end
 
@@ -406,6 +408,17 @@ module DiscourseWorkflows
         paired_item = { "item" => item_index_for(item, input_index:) }
         paired_item["input"] = input_index if input_index != 0
         paired_item
+      end
+
+      def ensure_workflow_call_access!(workflow_id)
+        workflow_id = workflow_id.to_s
+        if @workflow && @node_id
+          return if workflow_references_dependency?("workflow_call", workflow_id)
+        elsif @parameters["workflow_id"].to_s == workflow_id
+          return
+        end
+
+        raise Discourse::InvalidAccess
       end
 
       private

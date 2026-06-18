@@ -11,6 +11,8 @@ module DiscourseWorkflows
         :workflow_snapshot,
         :existing_execution,
         :webhook_context,
+        :workflow_call_stack,
+        :workflow_call_caller,
       ) do
         def initialize(
           user: nil,
@@ -19,7 +21,9 @@ module DiscourseWorkflows
           workflow_version: nil,
           workflow_snapshot: nil,
           existing_execution: nil,
-          webhook_context: nil
+          webhook_context: nil,
+          workflow_call_stack: [],
+          workflow_call_caller: nil
         )
           super
         end
