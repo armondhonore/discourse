@@ -1,5 +1,6 @@
-// Builds the customPickHandler passed to GifsModal from the chat composer's
-// GIF button. Extracted so the send + draft-reset interplay can be unit tested.
+// Builds the handler that sends a picked GIF from the chat composer (the
+// composer picker's GIF tab). Extracted so the send + draft-reset interplay
+// can be unit tested.
 //
 // The returned handler:
 //   - Sends the picked GIF as a chat message in the active context (channel or

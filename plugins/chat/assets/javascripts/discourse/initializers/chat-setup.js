@@ -1,7 +1,7 @@
 import { setOwner } from "@ember/owner";
 import { service } from "@ember/service";
+import ComposerPickerDetached from "discourse/components/composer-picker/detached";
 import EmojiPickerDetached from "discourse/components/emoji-picker/detached";
-import GifsModal from "discourse/components/modal/gifs";
 import { bind } from "discourse/lib/decorators";
 import EmbedMode from "discourse/lib/embed-mode";
 import { number } from "discourse/lib/formatter";
@@ -119,18 +119,40 @@ class ChatSetupInit {
           label: "gifs.composer_title",
           icon: "gif",
           position: "dropdown",
+          // On desktop the picker has an inline trigger; the dropdown entry is
+          // only needed on mobile, where it opens the same tabbed picker (on
+          // the GIFs tab) as a full-screen modal.
+          displayed() {
+            return this.site.mobileView;
+          },
           action(context) {
-            const modal = owner.lookup("service:modal");
+            const menu = owner.lookup("service:menu");
             const currentUser = owner.lookup("service:current-user");
+            const draft = this.draft;
+            const target = document.querySelector(
+              `[data-chat-composer-context="${context}"]`
+            );
 
-            modal.show(GifsModal, {
-              model: {
-                customPickHandler: buildGifPickHandler({
-                  api,
-                  draft: this.draft,
-                  isThread: context === "thread",
-                  currentUser,
-                }),
+            menu.show(target, {
+              identifier: "composer-picker",
+              groupIdentifier: "composer-picker",
+              component: ComposerPickerDetached,
+              modalForMobile: true,
+              data: {
+                context: "chat",
+                initialTab: "gifs",
+                onSelect: (value, tab) => {
+                  if (tab.id === "emoji") {
+                    this.onSelectEmoji(value);
+                  } else {
+                    buildGifPickHandler({
+                      api,
+                      draft,
+                      isThread: context === "thread",
+                      currentUser,
+                    })(value);
+                  }
+                },
               },
             });
           },
