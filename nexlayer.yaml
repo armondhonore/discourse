@@ -1,40 +1,40 @@
 application:
   name: discourse
   pods:
-    - name: web
-      image: bitnami/discourse:latest
-      path: /
-      servicePorts:
-        - 3000
-      vars:
-        DISCOURSE_HOST: "<%URL%>"
-        DISCOURSE_DATABASE_HOST: postgres.pod
-        DISCOURSE_DATABASE_PORT_NUMBER: "5432"
-        DISCOURSE_DATABASE_NAME: discourse
-        DISCOURSE_DATABASE_USER: discourse
-        DISCOURSE_DATABASE_PASSWORD: discourse
-        DISCOURSE_REDIS_HOST: redis.pod
-        DISCOURSE_REDIS_PORT_NUMBER: "6379"
-        DISCOURSE_USERNAME: admin
-        DISCOURSE_PASSWORD: "admin-changeme"
-        DISCOURSE_EMAIL: admin@example.com
-      volumes:
-        - name: data
-          mountPath: /bitnami/discourse
-          size: 10Gi
-    - name: postgres
-      image: postgres:15
-      servicePorts:
-        - 5432
-      vars:
-        POSTGRES_DB: discourse
-        POSTGRES_USER: discourse
-        POSTGRES_PASSWORD: discourse
-      volumes:
-        - name: db
-          mountPath: /var/lib/postgresql
-          size: 10Gi
-    - name: redis
-      image: redis:7-alpine
-      servicePorts:
-        - 6379
+  - name: web
+    image: bitnami/discourse:latest
+    path: /
+    servicePorts:
+    - 3000
+    vars:
+      DISCOURSE_HOST: "<%URL%>"
+      DISCOURSE_DATABASE_HOST: postgres.pod
+      DISCOURSE_DATABASE_PORT_NUMBER: "5432"
+      DISCOURSE_DATABASE_NAME: discourse
+      DISCOURSE_DATABASE_USER: discourse
+      DISCOURSE_DATABASE_PASSWORD: discourse
+      DISCOURSE_REDIS_HOST: redis.pod
+      DISCOURSE_REDIS_PORT_NUMBER: "6379"
+      DISCOURSE_USERNAME: admin
+      DISCOURSE_PASSWORD: "admin-changeme"
+      DISCOURSE_EMAIL: admin@example.com
+    volumes:
+    - name: discourse-data
+      mountPath: /bitnami/discourse
+      size: 10Gi
+  - name: postgres
+    image: postgres:15
+    servicePorts:
+    - 5432
+    vars:
+      POSTGRES_DB: discourse
+      POSTGRES_USER: discourse
+      POSTGRES_PASSWORD: discourse
+    volumes:
+    - name: discourse-db
+      mountPath: /var/lib/postgresql
+      size: 10Gi
+  - name: redis
+    image: redis:7-alpine
+    servicePorts:
+    - 6379
