@@ -7,7 +7,7 @@ application:
     servicePorts:
     - 3000
     vars:
-      DISCOURSE_HOST: "<%URL%>"
+      DISCOURSE_HOST: "relaxed-weasel-discourse.cloud.nexlayer.ai"
       DISCOURSE_DATABASE_HOST: postgres.pod
       DISCOURSE_DATABASE_PORT_NUMBER: "5432"
       DISCOURSE_DATABASE_NAME: discourse
