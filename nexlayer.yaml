@@ -2,7 +2,7 @@ application:
   name: discourse
   pods:
   - name: web
-    image: bitnami/discourse:3.2.2
+    image: bitnamilegacy/discourse:3.3.1
     path: /
     servicePorts:
     - 3000
