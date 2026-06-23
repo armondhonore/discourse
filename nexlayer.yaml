@@ -1,11 +1,26 @@
 application:
   name: discourse
   pods:
+  # Discourse all-in-one community image (Bitnami legacy 3.3.1, mirrored via
+  # mirror.gcr.io to avoid Docker Hub rate limits). This image boots a real
+  # Discourse: it connects to postgres + redis, runs DB migrations, then
+  # precompiles assets on first boot. Asset precompilation (Ember/sprockets)
+  # is extremely memory-hungry and spikes to ~6.4Gi -- with the default 1Gi
+  # (or even 4Gi) limit the container is OOMKilled mid-precompile and crash
+  # loops forever. An 8Gi limit lets precompile finish; steady-state usage
+  # then drops back to ~0.5Gi. This is the single most important fix here.
   - name: web
-    image: bitnamilegacy/discourse:3.3.1
+    image: mirror.gcr.io/bitnamilegacy/discourse:3.3.1
     path: /
     servicePorts:
     - 3000
+    resources:
+      limits:
+        cpu: "3"
+        memory: 8Gi
+      requests:
+        cpu: 500m
+        memory: 1Gi
     vars:
       DISCOURSE_HOST: "relaxed-weasel-discourse.cloud.nexlayer.ai"
       DISCOURSE_DATABASE_HOST: postgres.pod
@@ -16,15 +31,18 @@ application:
       DISCOURSE_REDIS_HOST: redis.pod
       DISCOURSE_REDIS_PORT_NUMBER: "6379"
       DISCOURSE_USERNAME: admin
-      DISCOURSE_PASSWORD: "admin-changeme"
+      DISCOURSE_PASSWORD: "admin-changeme123"
       DISCOURSE_EMAIL: admin@example.com
       DISCOURSE_SKIP_INSTALL: "no"
+      # redis has no password in this deployment; bitnami refuses to start
+      # without explicitly allowing the empty redis password.
+      ALLOW_EMPTY_PASSWORD: "yes"
     volumes:
     - name: discourse-data
       mountPath: /bitnami/discourse
       size: 10Gi
   - name: postgres
-    image: postgres:15
+    image: mirror.gcr.io/library/postgres:15
     servicePorts:
     - 5432
     vars:
@@ -36,6 +54,6 @@ application:
       mountPath: /var/lib/postgresql
       size: 10Gi
   - name: redis
-    image: redis:7-alpine
+    image: mirror.gcr.io/library/redis:7-alpine
     servicePorts:
     - 6379
